@@ -9,7 +9,7 @@
 dist
 build
 eggs
-ENV
+env
 parts
 bin
 var
