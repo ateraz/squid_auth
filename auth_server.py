@@ -3,6 +3,7 @@
 from twisted.internet.protocol import ServerFactory, Protocol
 from base64 import b64decode
 
+
 class AuthProtocol(Protocol):
 
     def dataReceived(self, data):
@@ -12,6 +13,7 @@ class AuthProtocol(Protocol):
         else:
             message = 'ERR'
         self.transport.write(message + '\n')
+
 
 class AuthFactory(ServerFactory):
 
@@ -27,14 +29,14 @@ class AuthFactory(ServerFactory):
         credentials.append(parts[0])
         return tuple(credentials)
 
-def main():
+
+if __name__ == '__main__':
     from twisted.internet import reactor
-    users = [('user', 'pass', '127.0.0.1')]
+    users = [
+        # default user
+        ('user', 'pass', '127.0.0.1'),
+        ('user_with_credentials', 'pass', '127.0.0.1')]
     port = reactor.listenTCP(9999, AuthFactory(users),
         interface='localhost')
     print 'Listening port %s.' % port.getHost()
     reactor.run()
-
-
-if __name__ == '__main__':
-    main()
