@@ -38,7 +38,8 @@ class AuthService(service.Service):
 
     def startService(self):
         service.Service.startService(self)
-        self.dbpool = adbapi.ConnectionPool('MySQLdb', db='squid_auth')
+        self.dbpool = adbapi.ConnectionPool('MySQLdb', db='squid_auth',
+                                            user='root')
 
     def validate(self, auth_str, auth_callback):
         user = self.get_user(auth_str)
