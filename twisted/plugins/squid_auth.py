@@ -11,13 +11,9 @@ class AuthServiceMaker(object):
     options = AuthServerOptions
 
     def makeService(self, options):
-        users = [
-            ('user_with_access', 'pass', '127.0.0.1'),
-            ('user_without_access', 'pass', '127.0.0.1')]
-
         top_service = service.MultiService()
 
-        auth_service = AuthService(users)
+        auth_service = AuthService()
         auth_service.setServiceParent(top_service)
 
         tcp_service = internet.TCPServer(
