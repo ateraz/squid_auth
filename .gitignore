@@ -9,7 +9,6 @@
 dist
 build
 eggs
-env
 parts
 bin
 var
@@ -35,3 +34,9 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+
+env
+twistd.log
+twistd.pid
+*.cache

@@ -6,7 +6,7 @@ Service for IP based squid auth and session checking.
 Squid config:
 ```
 # ACL for users without credentials
-acl defaultUser ident user
+acl defaultUser ident user_without_access
 http_access allow defaultUser
 # Custom authenticator that always returns "OK" and links to the external acl
 auth_param basic program <project_path>/fake_auth_client.py
