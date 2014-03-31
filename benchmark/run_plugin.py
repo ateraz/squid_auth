@@ -15,8 +15,6 @@ class AuthServerOptions(usage.Options):
 
 class AuthProtocol(LineReceiver):
 
-    delimiter = b'\n'
-
     def lineReceived(self, auth_str):
         self.factory.service.validate(auth_str, self.writeResponse)
 

@@ -9,6 +9,6 @@ server:
 
 auth_callback:
     # Console command executed after new user auth.
-    # Possible placeholders for auth_command: %username, %timeformat (see --url--), %ip
-    success: User {login} authorized at {time} from {ip}
+    # Possible placeholders for auth callbacks: username, id,  time, ip
+    success: echo 'User {login} with id {id} authorized at {time} from {ip}'
     fail: stuff

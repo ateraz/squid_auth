@@ -1,8 +1,9 @@
+from twisted.internet import protocol, defer, utils
 from twisted.application import internet, service
 from twisted.protocols.basic import LineReceiver
 from twisted.python import log, usage, failure
-from twisted.internet import protocol, defer
 from twisted.enterprise import adbapi
+from datetime import datetime
 from base64 import b64decode
 import yaml
 
@@ -17,13 +18,14 @@ class AuthConfigurator(object):
 
     def __init__(self, config_path):
         self.config = yaml.load(file(config_path))
-        print self.config
 
     def __getitem__(self, key):
         return self.config[key]
 
 
 class AuthProtocol(LineReceiver):
+
+    delimiter = b'\n'
 
     def lineReceived(self, auth_str):
         self.factory.service.validate(auth_str, self.writeResponse)
@@ -44,7 +46,6 @@ class AuthService(service.Service):
 
     def __init__(self, config):
         self.users, self.config = {}, config
-        print config
 
     def startService(self):
         service.Service.startService(self)
@@ -57,7 +58,7 @@ class AuthService(service.Service):
         if not user:
             return auth_callback(None)
         d = self.db.runQuery(
-            'SELECT login FROM users_all WHERE login=%s AND passwd=%s',
+            'SELECT id, login FROM users_all WHERE login=%s AND password=%s',
             (user['login'], user['password']))
         d.addCallback(self.checkUser, user)
         d.addCallbacks(self.successCallback, self.failCallback)
@@ -65,20 +66,23 @@ class AuthService(service.Service):
 
     def checkUser(self, results, user):
         ip, login = user['ip'], user['login']
-        if len(results) == 0 or (ip in self.users and self.users[ip] != login):
+        if len(results) == 0 or (ip in self.users and
+                    self.users[ip][0] != login):
             return failure.Failure(user)
-        self.users[user['ip']] = user['login']
+        userid = results[0][0]
+        self.users[user['ip']] = (user['login'], userid)
+        user['id'] = userid
         return user
 
     def successCallback(self, user):
-        c =  self.config['auth_callback']['success'].format(**user)
-        print c
+        utils.getProcessValue(
+            self.config['auth_callback']['success'].format(**user))
         return user
 
     def failCallback(self, user):
-        c = self.config['auth_callback']['fail'].format(**user)
-        print c
-        # Method shouldn't return anything
+        utils.getProcessValue(
+            self.config['auth_callback']['fail'].format(**user))
+        # Method shouldn't return anything but None
 
     @staticmethod
     def getUserParams(auth_str):
@@ -92,4 +96,4 @@ class AuthService(service.Service):
             'login': credentials[0],
             'password': credentials[1],
             'ip': parts[0],
-            'time': ''}
+            'time': datetime.now().strftime("%I:%M%p on %B %d, %Y")}
