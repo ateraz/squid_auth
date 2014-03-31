@@ -1,15 +1,16 @@
 import MySQLdb, socket
 
 def respond(sock, cursor):
+    sock.recv(1024)
     cursor.execute('SELECT * FROM users_all WHERE login=%s AND passwd=%s',
-          ('user', 'pass'))
+        ('user', 'pass'))
     print cursor.fetchone()
-    sock.sendall('OK\r\n')
+    sock.sendall('OK\n')
     sock.close()
 
 
 if __name__ == '__main__':
-    db = MySQLdb.connect(db='squid_auth', user='root')
+    db = MySQLdb.connect(db='squid_auth', user='root', passwd='root')
     cursor = db.cursor()
 
     listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

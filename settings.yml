@@ -1,0 +1,14 @@
+database:
+    name: squid_auth
+    user: root
+    pass: root
+
+server:
+    port: 9999
+    interface: localhost
+
+auth_callback:
+    # Console command executed after new user auth.
+    # Possible placeholders for auth_command: %username, %timeformat (see --url--), %ip
+    success: User {login} authorized at {time} from {ip}
+    fail: stuff
