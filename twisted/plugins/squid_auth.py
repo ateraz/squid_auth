@@ -2,7 +2,7 @@ from zope.interface import implements
 from twisted.plugin import IPlugin
 from twisted.application import internet, service
 from auth_server import (AuthService, AuthOptions, AuthConfigurator,
-    ValidatorFactory, CheckerFactory)
+    ValidatorFactory, IpCheckerFactory)
 
 class AuthServiceMaker(object):
     implements(service.IServiceMaker, IPlugin)
@@ -23,8 +23,8 @@ class AuthServiceMaker(object):
         validator.setServiceParent(top_service)
 
         checker = internet.TCPServer(
-            int(config['checker']['port']), CheckerFactory(auth_service),
-            interface=config['checker']['interface'])
+            int(config['ip_checker']['port']), IpCheckerFactory(auth_service),
+            interface=config['ip_checker']['interface'])
         checker.setServiceParent(top_service)
 
         return top_service
