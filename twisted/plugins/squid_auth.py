@@ -1,7 +1,7 @@
 from zope.interface import implements
 from twisted.plugin import IPlugin
 from twisted.application import internet, service
-from auth_server import (AuthService, AuthOptions, AuthConfigurator,
+from auth_server import (AuthService, AuthOptions, AuthConfig,
     ValidatorFactory, IpCheckerFactory)
 
 class AuthServiceMaker(object):
@@ -12,7 +12,7 @@ class AuthServiceMaker(object):
 
     def makeService(self, options):
         top_service = service.MultiService()
-        config = AuthConfigurator(options['config_path'])
+        config = AuthConfig(options['config_path'])
 
         auth_service = AuthService(config)
         auth_service.setServiceParent(top_service)

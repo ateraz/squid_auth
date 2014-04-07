@@ -4,8 +4,7 @@ from twisted.protocols.basic import LineReceiver
 from twisted.python import log, usage, failure
 from twisted.enterprise import adbapi
 from datetime import datetime, timedelta
-from string import Formatter
-import yaml, base64
+import yaml, base64, string
 
 
 class User(object):
@@ -19,10 +18,10 @@ class User(object):
         self.ip = ip
         self.login_time = datetime.now()
 
-    def updateFromQueryResult(self, result):
-        self.user_id = result[0]
-        self.dept_id = result[1]
-        self.admin_level = result[2]
+    def update(self, **kwargs):
+        for field in kwargs:
+            setattr(self, field, kwargs[field])
+        return self
 
     # Used in callback command string formatting
     def __getitem__(self, key):
@@ -44,7 +43,6 @@ class BaseProtocol(LineReceiver):
     delimiter = b'\n'
 
     def lineReceived(self, line):
-        print self.factory.service.users
         self.factory.lineReceived(line).addCallback(self.sendLine)
 
 
@@ -64,6 +62,7 @@ class ValidatorFactory(BaseFactory):
 
     successResponse = 'OK'
     failResponse = 'ERR'
+    formatter = string.Formatter()
 
     def lineReceived(self, line):
         user = User.fromAuthString(line)
@@ -83,17 +82,27 @@ class ValidatorFactory(BaseFactory):
         return self.__executeCallback('fail', user)
 
     def __executeCallback(self, completed, user):
-        print user
-        utils.getProcessValue(self.__formatCommand(
-            self.service.config['validator'][completed + '_callback'], user))
+        command = self.__formatCommand(
+            self.service.config['validator']['callback'][completed], user)
+        if command:
+            utils.getProcessValue(command)
         return getattr(self, completed + 'Response')
 
-    @staticmethod
     def __formatCommand(command, mapping):
-        return Formatter().vformat(command, None, mapping)
+        return self.formatter.vformat(command, None, mapping)
 
 
 class IpCheckerFactory(BaseFactory):
+
+    def lineReceived(self, line):
+        d, user_id, ip = defer.Deferred(), 0, line.strip()
+        if ip in self.service.users:
+            user_id = self.service.users[ip].user_id
+        d.callback(str(user_id))
+        return d
+
+
+class IpInfoFactory(BaseFactory):
 
     def lineReceived(self, line):
         d, user_id, ip = defer.Deferred(), 0, line.strip()
@@ -109,19 +118,24 @@ class AuthOptions(usage.Options):
         ['config_path', 'c', 'settings.yml', 'Configuration file path.']]
 
 
-class AuthConfigurator(object):
+class AuthConfig(dict):
 
     def __init__(self, config_path):
-        self.config = yaml.load(file(config_path))
+        dict.__init__(self, yaml.load(file(config_path)))
 
     def __getitem__(self, key):
-        return self.config[key]
+        return dict.__getitem__(self, key)
+
+    def __setitem__(self, key, val):
+        dict.__setitem__(self, key, val)
 
 
 class AuthService(service.Service):
 
+    users = {}
+
     def __init__(self, config):
-        self.users, self.config = {}, config
+        self.config = config
         self.login_timeout = self.config['validator']['login_timeout']
 
     def startService(self):
@@ -133,20 +147,21 @@ class AuthService(service.Service):
         task.LoopingCall(self.checkUsersTimeout).start(self.login_timeout)
 
     def validateUser(self, user):
+        # Note space at the end of the query first row. It's significant.
         return self.db.runQuery(
             'SELECT user_id, dept_id, admin_level FROM users_all '
             'WHERE login=%s AND passwd=%s', (user.login, user.passwd)
         ).addCallback(self.__validateQueryResult, user)
 
-    def addUser(self, user):
-        self.users[user.ip] = user
-        return user
-
     def __validateQueryResult(self, results, user):
         if len(results) == 0 or (user.ip in self.users and
                 self.users[user.ip].login != user.login):
             return failure.Failure(user)
-        user.updateFromQueryResult(results[0])
+        return user.update(user_id=results[0][0], dept_id=results[0][1],
+                           admin_level=results[0][2])
+
+    def addUser(self, user):
+        self.users[user.ip] = user
         return user
 
     def checkUsersTimeout(self):

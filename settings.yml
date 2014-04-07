@@ -11,9 +11,14 @@ validator:
     # Console command executed after new user auth.
     # Possible placeholders for auth callbacks:
     #   ip, user_id, dept_id, login, passwd, admin_level, login_time
-    success_callback: echo 'User {login} with id {user_id} authorized at {login_time} from {ip}'
-    fail_callback: stuff
+    callback:
+        success: echo 'User {login} with id {user_id} authorized at {login_time} from {ip}'
+        fail: stuff
 
 ip_checker:
+    port: 9998
+    interface: localhost
+
+ip_info:
     port: 9998
     interface: localhost
