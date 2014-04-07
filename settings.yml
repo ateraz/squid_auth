@@ -8,6 +8,7 @@ validator:
     port: 9999
     interface: localhost
     login_timeout: 30 # in seconds
+    database_update_timeout: 600
     # Console command executed after new user auth.
     # Possible placeholders for auth callbacks:
     #   ip, user_id, dept_id, login, passwd, admin_level, login_time
@@ -20,5 +21,5 @@ ip_checker:
     interface: localhost
 
 ip_info:
-    port: 9998
+    port: 9997
     interface: localhost

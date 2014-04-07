@@ -21,7 +21,6 @@ class User(object):
     def update(self, **kwargs):
         for field in kwargs:
             setattr(self, field, kwargs[field])
-        return self
 
     # Used in callback command string formatting
     def __getitem__(self, key):
@@ -71,9 +70,8 @@ class ValidatorFactory(BaseFactory):
             d = defer.Deferred()
             d.callback(self.failResponse)
             return d
-        return self.service.validateUser(user) \
-                   .addCallback(self.service.addUser) \
-                   .addCallbacks(self.successCallback, self.failCallback)
+        return self.service.validateUser(user).addCallbacks(
+            self.successCallback, self.failCallback)
 
     def successCallback(self, user):
         return self.__executeCallback('success', user)
@@ -88,7 +86,7 @@ class ValidatorFactory(BaseFactory):
             utils.getProcessValue(command)
         return getattr(self, completed + 'Response')
 
-    def __formatCommand(command, mapping):
+    def __formatCommand(self, command, mapping):
         return self.formatter.vformat(command, None, mapping)
 
 
@@ -96,8 +94,8 @@ class IpCheckerFactory(BaseFactory):
 
     def lineReceived(self, line):
         d, user_id, ip = defer.Deferred(), 0, line.strip()
-        if ip in self.service.users:
-            user_id = self.service.users[ip].user_id
+        if ip in self.service.active_users:
+            user_id = self.service.active_users[ip].user_id
         d.callback(str(user_id))
         return d
 
@@ -106,8 +104,8 @@ class IpInfoFactory(BaseFactory):
 
     def lineReceived(self, line):
         d, user_id, ip = defer.Deferred(), 0, line.strip()
-        if ip in self.service.users:
-            user_id = self.service.users[ip].user_id
+        if ip in self.service.active_users:
+            user_id = self.service.active_users[ip].user_id
         d.callback(str(user_id))
         return d
 
@@ -132,7 +130,8 @@ class AuthConfig(dict):
 
 class AuthService(service.Service):
 
-    users = {}
+    active_users = {}
+    all_users = {}
 
     def __init__(self, config):
         self.config = config
@@ -144,28 +143,48 @@ class AuthService(service.Service):
         self.db = adbapi.ConnectionPool(
             'MySQLdb', host=db['host'], db=db['name'],
             user=db['user'], passwd=db['pass'])
-        task.LoopingCall(self.checkUsersTimeout).start(self.login_timeout)
+        task.LoopingCall(self.getAllUsers).start(
+            self.config['validator']['database_update_timeout'])
+        task.LoopingCall(self.checkActiveUsersTimeout).start(self.login_timeout)
 
     def validateUser(self, user):
-        # Note space at the end of the query first row. It's significant.
-        return self.db.runQuery(
-            'SELECT user_id, dept_id, admin_level FROM users_all '
-            'WHERE login=%s AND passwd=%s', (user.login, user.passwd)
-        ).addCallback(self.__validateQueryResult, user)
+        d = defer.Deferred()
+        if self.__userNotExists(user) or self.__userOnAnotherIp(user):
+            d.errback(user)
+        else:
+            params = self.all_users[(user.login, user.passwd)]
+            user.update(user_id=params['user_id'], dept_id=params['dept_id'],
+                        admin_level=params['admin_level'])
+            self.__addActiveUser(user)
+            d.callback(user)
+        return d
 
-    def __validateQueryResult(self, results, user):
-        if len(results) == 0 or (user.ip in self.users and
-                self.users[user.ip].login != user.login):
-            return failure.Failure(user)
-        return user.update(user_id=results[0][0], dept_id=results[0][1],
-                           admin_level=results[0][2])
+    def __userNotExists(self, user):
+        return (user.login, user.passwd) not in self.all_users
 
-    def addUser(self, user):
-        self.users[user.ip] = user
-        return user
+    def __userOnAnotherIp(self, user):
+        return (user.ip in self.active_users and
+            self.active_users[user.ip].login != user.login)
 
-    def checkUsersTimeout(self):
+    def __addActiveUser(self, user):
+        self.active_users[user.ip] = user
+
+    def checkActiveUsersTimeout(self):
         deadline = datetime.now() - timedelta(seconds=self.login_timeout)
-        for ip, user in self.users.items():
+        for ip, user in self.active_users.items():
             if user.login_time < deadline:
-                del self.users[ip]
+                del self.active_users[ip]
+
+    def getAllUsers(self):
+        self.db.runQuery(
+            'SELECT login, passwd, user_id, dept_id, admin_level FROM users_all'
+        ).addCallback(self.__updateAllUsers)
+
+    def __updateAllUsers(self, users):
+        self.all_users = {}
+        for user in users:
+            # (login, passwd) => dict with user_id, dept_id, admin_level keys
+            self.all_users[(user[0], user[1])] = {
+                'user_id': user[2],
+                'dept_id': user[3],
+                'admin_level': user[4]}
