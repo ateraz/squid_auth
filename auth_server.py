@@ -80,14 +80,17 @@ class ValidatorFactory(BaseFactory):
         return self.__executeCallback('fail', user)
 
     def __executeCallback(self, completed, user):
-        command = self.__formatCommand(
-            self.service.config['validator']['callback'][completed], user)
-        if command:
-            utils.getProcessValue(command)
+        callback = self.service.config['validator']['callbacks'][completed]
+        args = self.__formatArgs(callback['args'], user)
+        if callback['executable']:
+            utils.getProcessValue(callback['executable'], args)
         return getattr(self, completed + 'Response')
 
-    def __formatCommand(self, command, mapping):
-        return self.formatter.vformat(command, None, mapping)
+    def __formatArgs(self, args, mapping):
+        res = []
+        for arg in args:
+            res.append(self.formatter.vformat(arg, None, mapping))
+        return res
 
 
 class IpCheckerFactory(BaseFactory):

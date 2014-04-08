@@ -9,12 +9,16 @@ validator:
     interface: localhost
     login_timeout: 30 # in seconds
     database_update_timeout: 600
-    # Console command executed after new user auth.
-    # Possible placeholders for auth callbacks:
-    #   ip, user_id, dept_id, login, passwd, admin_level, login_time
-    callback:
-        success: echo 'User {login} with id {user_id} authorized at {login_time} from {ip}'
-        fail: stuff
+    callbacks:
+        # Console command executed after new user auth.
+        # Possible placeholders for auth callbacks args:
+        #   ip, user_id, dept_id, login, passwd, admin_level, login_time
+        success:
+            executable: /usr/bin/touch
+            args: ['success{user_id}.txt']
+        fail:
+            executable: /usr/bin/touch
+            args: ['fail.txt']
 
 ip_checker:
     port: 9998
