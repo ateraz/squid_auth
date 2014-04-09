@@ -4,26 +4,26 @@ database:
     user: root
     pass: root
 
-validator:
-    port: 9999
-    interface: localhost
-    login_timeout: 30 # in seconds
-    database_update_timeout: 600
-    callbacks:
-        # Console command executed after new user auth.
-        # Possible placeholders for auth callbacks args:
-        #   ip, user_id, dept_id, login, passwd, admin_level, login_time
-        success:
-            executable: /usr/bin/touch
-            args: ['success{user_id}.txt']
-        fail:
-            executable: /usr/bin/touch
-            args: ['fail.txt']
+login_timeout: 30 # in seconds
+database_update_timeout: 600
+callbacks:
+    # Console command executed after new user auth.
+    # Possible placeholders for auth callbacks args:
+    #   ip, user_id, dept_id, login, passwd, admin_level, login_time
+    success:
+        executable: /usr/bin/touch
+        args: ['success{user_id}.txt']
+    fail:
+        executable: /usr/bin/touch
+        args: ['fail.txt']
 
-ip_checker:
-    port: 9998
-    interface: localhost
-
-ip_info:
-    port: 9997
-    interface: localhost
+servers:
+    validator:
+        port: 9999
+        interface: localhost
+    ip_checker:
+        port: 9998
+        interface: localhost
+    ip_info:
+        port: 9997
+        interface: localhost

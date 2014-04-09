@@ -1,40 +1,27 @@
 from twisted.internet import protocol, defer, utils, task
 from twisted.application import internet, service
 from twisted.protocols.basic import LineReceiver
-from twisted.python import log, usage, failure
+from twisted.python import log, failure
 from twisted.enterprise import adbapi
-from datetime import datetime, timedelta
-import yaml, base64, string
+import yaml, base64, string, datetime
 
 
 class User(object):
 
     __slots__ = ['ip', 'user_id', 'dept_id', 'login', 'passwd', 'admin_level',
-        'login_time']
+                 'login_time']
 
-    def __init__(self, login, passwd, ip):
-        self.login = login
-        self.passwd = passwd
-        self.ip = ip
-        self.login_time = datetime.now()
-
-    def update(self, **kwargs):
+    def __init__(self, **kwargs):
         for field in kwargs:
             setattr(self, field, kwargs[field])
+
+    def setIp(self, ip):
+        self.ip = ip
+        self.login_time = datetime.datetime.now()
 
     # Used in callback command string formatting
     def __getitem__(self, key):
         return getattr(self, key, '')
-
-    @classmethod
-    def fromAuthString(cls, auth_str):
-        parts = auth_str.replace('%20', ' ').split()
-        try:
-            credentials = base64.b64decode(parts[2]).split(':')
-            return cls(login=credentials[0], passwd=credentials[1],
-                       ip=parts[0])
-        except:
-            return None
 
 
 class BaseProtocol(LineReceiver):
@@ -59,76 +46,100 @@ class BaseFactory(protocol.ServerFactory):
 
 class ValidatorFactory(BaseFactory):
 
-    successResponse = 'OK'
-    failResponse = 'ERR'
+    success_response = 'OK'
+    fail_response = 'ERR'
     formatter = string.Formatter()
 
     def lineReceived(self, line):
-        user = User.fromAuthString(line)
-        if not user:
+        auth_params = self.parseAuthString(line)
+        if not auth_params:
             log.msg('Bad auth string format')
             d = defer.Deferred()
-            d.callback(self.failResponse)
+            d.callback(self.fail_response)
             return d
-        return self.service.validateUser(user).addCallbacks(
+        return self.service.validateUser(auth_params).addCallbacks(
             self.successCallback, self.failCallback)
 
+    @staticmethod
+    def parseAuthString(auth_str):
+        parts = auth_str.replace('%20', ' ').split()
+        try:
+            credentials = base64.b64decode(parts[2]).split(':')
+            return parts[0], credentials[0], credentials[1]
+        except:
+            return None
+
     def successCallback(self, user):
-        return self.__executeCallback('success', user)
+        return self.executeCallback('success', user)
 
     def failCallback(self, user):
-        return self.__executeCallback('fail', user)
+        return self.executeCallback('fail', user)
 
-    def __executeCallback(self, completed, user):
-        callback = self.service.config['validator']['callbacks'][completed]
-        args = self.__formatArgs(callback['args'], user)
+    def executeCallback(self, completed, user):
+        callback = self.service.config['callbacks'][completed]
         if callback['executable']:
+            args = self.formatArgs(callback['args'], user)
             utils.getProcessValue(callback['executable'], args)
-        return getattr(self, completed + 'Response')
+        return getattr(self, completed + '_response')
 
-    def __formatArgs(self, args, mapping):
-        res = []
-        for arg in args:
-            res.append(self.formatter.vformat(arg, None, mapping))
-        return res
+    def formatArgs(self, args, mapping):
+        return [self.formatter.vformat(arg, None, mapping) for arg in args]
 
 
 class IpCheckerFactory(BaseFactory):
 
     def lineReceived(self, line):
-        d, user_id, ip = defer.Deferred(), 0, line.strip()
-        if ip in self.service.active_users:
-            user_id = self.service.active_users[ip].user_id
+        d, ip = defer.Deferred(), line.strip()
+        user_id = self.service.getActiveUserIdByIp(ip)
         d.callback(str(user_id))
         return d
 
 
 class IpInfoFactory(BaseFactory):
 
+    allowed_fields = ['login', 'dept_id', 'admin_level']
+
     def lineReceived(self, line):
-        d, user_id, ip = defer.Deferred(), 0, line.strip()
-        if ip in self.service.active_users:
-            user_id = self.service.active_users[ip].user_id
-        d.callback(str(user_id))
+        d, request = defer.Deferred(), line.strip()
+        separator = request[0]
+        parts = request.split(separator)
+        res = self.buildResponseString(parts, separator)
+        d.callback(str(res))
         return d
 
+    def buildResponseString(self, parts, separator):
+        if len(parts) < 3:
+            return -1
+        user = self.service.getActiveUserByIp(parts[1])
+        if not user:
+            return 0
+        return self.getUserParams(user, parts[2:], separator)
 
-class AuthOptions(usage.Options):
+    def getUserParams(self, user, params, separator):
+        user_params = []
+        for param in params:
+            if param in self.allowed_fields:
+                user_params.append(getattr(user, param))
+            else:
+                return -1
+        user_params.insert(0, user.user_id)
+        return separator.join(map(str, user_params))
 
-    optParameters = [
-        ['config_path', 'c', 'settings.yml', 'Configuration file path.']]
+
+class ServiceFactory(object):
+
+    validator = ValidatorFactory
+    ip_checker = IpCheckerFactory
+    ip_info = IpInfoFactory
+
+    def construct(self, factory_name, service):
+        return getattr(self, factory_name)(service)
 
 
 class AuthConfig(dict):
 
     def __init__(self, config_path):
         dict.__init__(self, yaml.load(file(config_path)))
-
-    def __getitem__(self, key):
-        return dict.__getitem__(self, key)
-
-    def __setitem__(self, key, val):
-        dict.__setitem__(self, key, val)
 
 
 class AuthService(service.Service):
@@ -138,42 +149,53 @@ class AuthService(service.Service):
 
     def __init__(self, config):
         self.config = config
-        self.login_timeout = self.config['validator']['login_timeout']
 
     def startService(self):
         service.Service.startService(self)
         db = self.config['database']
         self.db = adbapi.ConnectionPool(
-            'MySQLdb', host=db['host'], db=db['name'],
-            user=db['user'], passwd=db['pass'])
+            'MySQLdb', host=db['host'], db=db['name'], user=db['user'],
+            passwd=db['pass'])
         task.LoopingCall(self.getAllUsers).start(
-            self.config['validator']['database_update_timeout'])
-        task.LoopingCall(self.checkActiveUsersTimeout).start(self.login_timeout)
+            self.config['database_update_timeout'])
+        task.LoopingCall(self.checkActiveUsersTimeout).start(
+            self.config['login_timeout'])
 
-    def validateUser(self, user):
+    def validateUser(self, auth_params):
+        ip, login, passwd = auth_params
         d = defer.Deferred()
-        if self.__userNotExists(user) or self.__userOnAnotherIp(user):
+        if (not self.userExists(login, passwd) or
+                self.ipUsedByAnotherUser(ip, login)):
             d.errback(user)
         else:
-            params = self.all_users[(user.login, user.passwd)]
-            user.update(user_id=params['user_id'], dept_id=params['dept_id'],
-                        admin_level=params['admin_level'])
-            self.__addActiveUser(user)
+            user = self.all_users[(login, passwd)]
+            self.addActiveUser(user, ip)
             d.callback(user)
         return d
 
-    def __userNotExists(self, user):
-        return (user.login, user.passwd) not in self.all_users
+    def userExists(self, login, passwd):
+        return (login, passwd) in self.all_users
 
-    def __userOnAnotherIp(self, user):
-        return (user.ip in self.active_users and
-            self.active_users[user.ip].login != user.login)
+    def ipUsedByAnotherUser(self, ip, login):
+        return ip in self.active_users and self.active_users[ip].login != login
 
-    def __addActiveUser(self, user):
-        self.active_users[user.ip] = user
+    def addActiveUser(self, user, ip):
+        user.setIp(ip)
+        self.active_users[ip] = user
+
+    def ipIsUsed(self, ip):
+        return ip in self.active_users
+
+    def getActiveUserByIp(self, ip):
+        return self.active_users[ip] if self.ipIsUsed(ip) else None
+
+    def getActiveUserIdByIp(self, ip):
+        user = self.getActiveUserByIp(ip)
+        return user.user_id if user else 0
 
     def checkActiveUsersTimeout(self):
-        deadline = datetime.now() - timedelta(seconds=self.login_timeout)
+        deadline = datetime.datetime.now() - datetime.timedelta(
+            seconds=self.config['login_timeout'])
         for ip, user in self.active_users.items():
             if user.login_time < deadline:
                 del self.active_users[ip]
@@ -181,13 +203,11 @@ class AuthService(service.Service):
     def getAllUsers(self):
         self.db.runQuery(
             'SELECT login, passwd, user_id, dept_id, admin_level FROM users_all'
-        ).addCallback(self.__updateAllUsers)
+        ).addCallback(self.updateAllUsers)
 
-    def __updateAllUsers(self, users):
+    def updateAllUsers(self, users):
         self.all_users = {}
         for user in users:
-            # (login, passwd) => dict with user_id, dept_id, admin_level keys
-            self.all_users[(user[0], user[1])] = {
-                'user_id': user[2],
-                'dept_id': user[3],
-                'admin_level': user[4]}
+            self.all_users[(user[0], user[1])] = User(
+                login=user[0], passwd=user[1], user_id=user[2], dept_id=user[3],
+                admin_level=user[4])
