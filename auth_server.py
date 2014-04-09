@@ -166,6 +166,8 @@ class AuthService(service.Service):
         d = defer.Deferred()
         if (not self.userExists(login, passwd) or
                 self.ipUsedByAnotherUser(ip, login)):
+            user = User(login=login)
+            user.setIp(ip)
             d.errback(user)
         else:
             user = self.all_users[(login, passwd)]
