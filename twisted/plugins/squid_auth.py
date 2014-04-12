@@ -23,12 +23,11 @@ class AuthServiceMaker(object):
 
         auth_service = AuthService(config)
         auth_service.setServiceParent(top_service)
-        service_factory = ServiceFactory()
 
         for server in config['servers']:
             internet.TCPServer(
                 int(config['servers'][server]['port']),
-                service_factory.construct(server, auth_service),
+                ServiceFactory.construct(server, auth_service),
                 interface=config['servers'][server]['interface']
             ).setServiceParent(top_service)
 

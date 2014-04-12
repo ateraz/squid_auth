@@ -3,21 +3,35 @@ from twisted.application import internet, service
 from twisted.protocols.basic import LineReceiver
 from twisted.python import log, failure
 from twisted.enterprise import adbapi
-import yaml, base64, string, datetime
+import yaml, base64, string, datetime, copy
 
 
 class User(object):
-
+    """Repsesents user that needs to be authorized and queried in API calls.
+    """
     __slots__ = ['ip', 'user_id', 'dept_id', 'login', 'passwd', 'admin_level',
-                 'login_time']
+                 'login_time', 'status']
+    valid = 'valid'
 
     def __init__(self, **kwargs):
         for field in kwargs:
             setattr(self, field, kwargs[field])
+        self.status = ''
 
     def setIp(self, ip):
+        """Sets authorized user ip, remembers login time
+        and marks user as valid.
+        """
         self.ip = ip
         self.login_time = datetime.datetime.now()
+        self.status = self.valid
+
+    def isAuthorized(self):
+        """Checks if user is authorized.
+        """
+        print self.status
+        print self.valid
+        return self.status == self.valid
 
     # Used in callback command string formatting
     def __getitem__(self, key):
@@ -25,40 +39,47 @@ class User(object):
 
 
 class BaseProtocol(LineReceiver):
-
+    """Base protocol for implementing socket APIs.
+    """
     delimiter = b'\n'
 
     def lineReceived(self, line):
-        self.factory.lineReceived(line).addCallback(self.sendLine)
+        self.sendLine(str(self.factory.processLine(line.strip())))
 
 
 class BaseFactory(protocol.ServerFactory):
-
+    """Factory instantiating base protocol instances
+    and implementing API logic.
+    """
     protocol = BaseProtocol
 
     def __init__(self, service):
         self.service = service
 
-    def lineReceived(self, line):
+    def processLine(self, line):
+        """Abstract method that should be implemented in child classes.
+        Contains logic for building response for API calls.
+        """
         raise NotImplementedError(
             'Method lineReceived should be implemented in subclass')
 
 
 class ValidatorFactory(BaseFactory):
-
+    """API used by squid for validating proxy users.
+    """
     success_response = 'OK'
     fail_response = 'ERR'
     formatter = string.Formatter()
 
-    def lineReceived(self, line):
+    def processLine(self, line):
         auth_params = self.parseAuthString(line)
         if not auth_params:
             log.msg('Bad auth string format')
-            d = defer.Deferred()
-            d.callback(self.fail_response)
-            return d
-        return self.service.validateUser(auth_params).addCallbacks(
-            self.successCallback, self.failCallback)
+            return self.fail_response
+        user = self.service.validateUser(auth_params)
+        status = 'success' if user.isAuthorized() else 'fail'
+        self.executeCallback(status, user)
+        return getattr(self, status + '_response')
 
     @staticmethod
     def parseAuthString(auth_str):
@@ -69,43 +90,34 @@ class ValidatorFactory(BaseFactory):
         except:
             return None
 
-    def successCallback(self, user):
-        return self.executeCallback('success', user)
-
-    def failCallback(self, user):
-        return self.executeCallback('fail', user)
-
-    def executeCallback(self, completed, user):
-        callback = self.service.config['callbacks'][completed]
+    def executeCallback(self, status, user):
+        callback = self.service.config['callbacks'][status]
         if callback['executable']:
             args = self.formatArgs(callback['args'], user)
+            # Runs system call in separate thread.
+            # Doesn't care about results.
             utils.getProcessValue(callback['executable'], args)
-        return getattr(self, completed + '_response')
 
     def formatArgs(self, args, mapping):
         return [self.formatter.vformat(arg, None, mapping) for arg in args]
 
 
 class IpCheckerFactory(BaseFactory):
-
-    def lineReceived(self, line):
-        d, ip = defer.Deferred(), line.strip()
-        user_id = self.service.getActiveUserIdByIp(ip)
-        d.callback(str(user_id))
-        return d
+    """API for getting user ID of current proxy users.
+    """
+    def processLine(self, line):
+        return self.service.getActiveUserIdByIp(line)
 
 
 class IpInfoFactory(BaseFactory):
-
+    """API for getting more detailed info about active proxy users.
+    """
     allowed_fields = ['login', 'dept_id', 'admin_level']
 
-    def lineReceived(self, line):
-        d, request = defer.Deferred(), line.strip()
-        separator = request[0]
-        parts = request.split(separator)
-        res = self.buildResponseString(parts, separator)
-        d.callback(str(res))
-        return d
+    def processLine(self, line):
+        separator = line[0]
+        parts = line.split(separator)
+        return self.buildResponseString(parts, separator)
 
     def buildResponseString(self, parts, separator):
         if len(parts) < 3:
@@ -127,23 +139,28 @@ class IpInfoFactory(BaseFactory):
 
 
 class ServiceFactory(object):
-
+    """API builder.
+    Instantiates API instances for application.
+    """
     validator = ValidatorFactory
     ip_checker = IpCheckerFactory
     ip_info = IpInfoFactory
 
-    def construct(self, factory_name, service):
-        return getattr(self, factory_name)(service)
+    @classmethod
+    def construct(cls, factory_name, service):
+        return getattr(cls, factory_name)(service)
 
 
 class AuthConfig(dict):
-
+    """Stored in file application config.
+    """
     def __init__(self, config_path):
         dict.__init__(self, yaml.load(file(config_path)))
 
 
 class AuthService(service.Service):
-
+    """Service used by APIs to query, store and exchange info about users.
+    """
     active_users = {}
     all_users = {}
 
@@ -163,37 +180,25 @@ class AuthService(service.Service):
 
     def validateUser(self, auth_params):
         ip, login, passwd = auth_params
-        d = defer.Deferred()
-        if (not self.userExists(login, passwd) or
+        if ((login, passwd) not in self.all_users or
                 self.ipUsedByAnotherUser(ip, login)):
-            user = User(login=login)
-            user.setIp(ip)
-            d.errback(user)
-        else:
-            user = self.all_users[(login, passwd)]
-            self.addActiveUser(user, ip)
-            d.callback(user)
-        return d
-
-    def userExists(self, login, passwd):
-        return (login, passwd) in self.all_users
+            return User(ip=ip, login=login, passwd=passwd)
+        return self.addActiveUser(self.all_users[(login, passwd)], ip)
 
     def ipUsedByAnotherUser(self, ip, login):
         return ip in self.active_users and self.active_users[ip].login != login
 
     def addActiveUser(self, user, ip):
-        user.setIp(ip)
-        self.active_users[ip] = user
-
-    def ipIsUsed(self, ip):
-        return ip in self.active_users
+        _user = copy.copy(user)
+        _user.setIp(ip)
+        self.active_users[ip] = _user
+        return _user
 
     def getActiveUserByIp(self, ip):
-        return self.active_users[ip] if self.ipIsUsed(ip) else None
+        return self.active_users[ip] if ip in self.active_users else None
 
     def getActiveUserIdByIp(self, ip):
-        user = self.getActiveUserByIp(ip)
-        return user.user_id if user else 0
+        return getattr(self.getActiveUserByIp(ip), 'user_id', 0)
 
     def checkActiveUsersTimeout(self):
         deadline = datetime.datetime.now() - datetime.timedelta(
@@ -202,12 +207,11 @@ class AuthService(service.Service):
             if user.login_time < deadline:
                 del self.active_users[ip]
 
+    @defer.inlineCallbacks
     def getAllUsers(self):
-        self.db.runQuery(
+        users = yield self.db.runQuery(
             'SELECT login, passwd, user_id, dept_id, admin_level FROM users_all'
-        ).addCallback(self.updateAllUsers)
-
-    def updateAllUsers(self, users):
+        )
         self.all_users = {}
         for user in users:
             self.all_users[(user[0], user[1])] = User(
