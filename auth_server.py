@@ -1,9 +1,27 @@
-from twisted.internet import protocol, defer, utils, task
-from twisted.application import internet, service
+from twisted.internet import protocol, utils, task, reactor, defer
+from twisted.application import service
 from twisted.protocols.basic import LineReceiver
-from twisted.python import log, failure
+from twisted.python import log
 from twisted.enterprise import adbapi
-import yaml, base64, string, datetime, copy
+import yaml, base64, string, datetime, copy, MySQLdb
+
+
+class MysqlConnectionPool(adbapi.ConnectionPool):
+    """Async MySQL connection pool that provides error handling possibilities.
+    """
+    def __init__(self, error_handler, *args, **kwargs):
+        self.error_handler = error_handler
+        adbapi.ConnectionPool.__init__(self, 'MySQLdb', *args, **kwargs)
+
+    def _runInteraction(self, interaction, *args, **kw):
+        try:
+            return adbapi.ConnectionPool._runInteraction(
+                self, interaction, *args, **kw)
+        except MySQLdb.OperationalError, e:
+            self.error_handler(e)
+            # Reactor is not stopping immediately,
+            # thus need to return empty list as query result.
+            return []
 
 
 class User(object):
@@ -29,8 +47,6 @@ class User(object):
     def isAuthorized(self):
         """Checks if user is authorized.
         """
-        print self.status
-        print self.valid
         return self.status == self.valid
 
     # Used in callback command string formatting
@@ -170,9 +186,9 @@ class AuthService(service.Service):
     def startService(self):
         service.Service.startService(self)
         db = self.config['database']
-        self.db = adbapi.ConnectionPool(
-            'MySQLdb', host=db['host'], db=db['name'], user=db['user'],
-            passwd=db['pass'])
+        self.db = MysqlConnectionPool(
+            error_handler=self.processDbError, host=db['host'],
+            db=db['name'], user=db['user'], passwd=db['pass'])
         task.LoopingCall(self.getAllUsers).start(
             self.config['database_update_timeout'])
         task.LoopingCall(self.checkActiveUsersTimeout).start(
@@ -210,10 +226,18 @@ class AuthService(service.Service):
     @defer.inlineCallbacks
     def getAllUsers(self):
         users = yield self.db.runQuery(
-            'SELECT login, passwd, user_id, dept_id, admin_level FROM users_all'
+            'SELECT login, passwd, user_id, dept_id, admin_level '
+            'FROM users_all'
         )
         self.all_users = {}
         for user in users:
             self.all_users[(user[0], user[1])] = User(
                 login=user[0], passwd=user[1], user_id=user[2], dept_id=user[3],
                 admin_level=user[4])
+
+    def processDbError(self, error):
+        if self.all_users:
+            log.msg("Users not updated from db!")
+        else:
+            log.msg("Unable to fetch users from db, exiting...")
+            reactor.stop()
