@@ -4,18 +4,19 @@ database:
     user: root
     pass: root
 
-login_timeout: 30 # in seconds
-database_update_timeout: 600
-callbacks:
-    # Console command executed after new user auth.
-    # Possible placeholders for auth callbacks args:
-    #   ip, user_id, dept_id, login, passwd, admin_level, login_time
-    success:
-        executable: /usr/bin/touch
-        args: ['success{user_id}.txt']
-    fail:
-        executable: /usr/bin/touch
-        args: ['fail.txt']
+service:
+    login_timeout: 30 # in seconds
+    database_update_timeout: 600
+    callbacks:
+        # Console command executed after new user auth.
+        # Possible placeholders for auth callbacks args:
+        #   ip, user_id, dept_id, login, passwd, admin_level, login_time
+        success:
+            executable: /usr/bin/touch
+            args: ['success{user_id}.txt']
+        fail:
+            executable: /usr/bin/touch
+            args: ['fail.txt']
 
 servers:
     validator:

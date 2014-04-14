@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import sys, select, socket, functools
 
 
@@ -14,11 +13,10 @@ def trigger_on_stdin(auth_func):
 
 @trigger_on_stdin
 def auth_client(auth_str, sock):
-    sys.stderr.write('Got request ' + auth_str)
     sock.sendall(auth_str)
     return sock.recv(1024)
 
 if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(('127.0.0.1', 9999))
-    sys.exit(auth_client(sock))
+    auth_client(sock)
