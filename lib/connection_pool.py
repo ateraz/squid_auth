@@ -10,7 +10,7 @@ class ConnectionPool(adbapi.ConnectionPool):
     def __init__(self, config):
         adbapi.ConnectionPool.__init__(
             self, 'MySQLdb', host=config['host'], db=config['name'],
-            user=config['user'], passwd=config['pass'])
+            user=config['user'], passwd=config['passwd'])
 
     def setErrorHandler(self, error_handler):
         self.error_handler = error_handler
