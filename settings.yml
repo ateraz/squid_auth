@@ -5,8 +5,11 @@ database:
     pass: root
 
 service:
-    login_timeout: 30 # in seconds
-    database_update_timeout: 600
+    timeouts:
+        # in seconds
+        login: 30
+        show_welcome: 1800
+        database_update: 600
     callbacks:
         # Console command executed after new user auth.
         # Possible placeholders for auth callbacks args:
@@ -22,9 +25,12 @@ servers:
     validator:
         port: 9999
         interface: localhost
-    ip_checker:
+    session:
         port: 9998
         interface: localhost
-    ip_info:
+    ip_checker:
         port: 9997
+        interface: localhost
+    ip_info:
+        port: 9996
         interface: localhost

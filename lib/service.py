@@ -22,9 +22,11 @@ class AuthService(service.Service):
     def startService(self):
         service.Service.startService(self)
         task.LoopingCall(self.getAllUsers).start(
-            self.config['database_update_timeout'])
+            self.config['timeouts']['database_update'])
         task.LoopingCall(self.checkActiveUsersTimeout).start(
-            self.config['login_timeout'])
+            self.config['timeouts']['login'])
+        task.LoopingCall(self.checkSeenWelcomeTimeout).start(
+            self.config['timeouts']['show_welcome'])
 
     def validateUser(self, auth_params):
         ip, login, passwd = auth_params
@@ -53,11 +55,18 @@ class AuthService(service.Service):
 
     def checkActiveUsersTimeout(self):
         deadline = datetime.datetime.now() - datetime.timedelta(
-            seconds=self.config['login_timeout'])
+            seconds=self.config['timeouts']['login'])
         for ip, user in self.active_users.items():
             if user.login_time < deadline:
                 user.is_authrorized = False
                 del self.active_users[ip]
+
+    def checkSeenWelcomeTimeout(self):
+        deadline = datetime.datetime.now() - datetime.timedelta(
+            seconds=self.config['timeouts']['show_welcome'])
+        for ip, user in self.active_users.items():
+            if user.login_time < deadline:
+                user.seen_welcome = False
 
     @defer.inlineCallbacks
     def getAllUsers(self):

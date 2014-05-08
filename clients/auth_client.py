@@ -18,5 +18,5 @@ def auth_client(auth_str, sock):
 
 if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(('127.0.0.1', 9999))
+    sock.connect(('127.0.0.1', int(sys.argv[1])))
     auth_client(sock)

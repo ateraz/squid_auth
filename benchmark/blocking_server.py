@@ -7,8 +7,8 @@ import socket
 class Connection:
 
     db = MySQLdb.connect(
-        db='squid_auth', user='root',
-        passwd='root', host='localhost'
+        db='squid_auth', user='squid',
+        passwd='not_secure_pass', host='91.202.128.106'
     ).cursor()
 
     def __init__(self, sock):

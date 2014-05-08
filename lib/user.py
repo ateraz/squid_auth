@@ -6,12 +6,13 @@ import datetime
 class User(object):
     """Repsesents user that needs to be authorized and queried in API calls."""
     __slots__ = ['ip', 'user_id', 'dept_id', 'login', 'passwd', 'admin_level',
-                 'login_time', 'is_authrorized']
+                 'login_time', 'is_authrorized', 'seen_welcome']
 
     def __init__(self, **kwargs):
         for field in kwargs:
             setattr(self, field, kwargs[field])
         self.is_authrorized = False
+        self.seen_welcome = False
 
     def connectFrom(self, ip):
         """Sets authorized user ip, remembers login time

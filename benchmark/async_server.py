@@ -7,8 +7,8 @@ from twisted.enterprise import adbapi
 class Connection(protocol.Protocol):
 
     db = adbapi.ConnectionPool(
-        'MySQLdb', db='squid_auth', user='root',
-        passwd='root', host='localhost')
+        'MySQLdb', db='squid_auth', user='squid',
+        passwd='not_secure_pass', host='91.202.128.106')
 
     def dataReceived(self, data):
         self.db.runQuery(

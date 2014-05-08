@@ -54,6 +54,26 @@ class ValidatorFactory(_BaseFactory):
             return None
 
 
+class SessionFactory(_BaseFactory):
+    """"""
+    valid_response = 'OK'
+    invalid_response = 'ERR'
+
+    def processLine(self, line):
+        print line
+        ip, login = line.split()
+        user = self.service.getActiveUserByIp(ip)
+        if not user or login != user.login:
+            r = self.invalid_response
+        elif not user.seen_welcome:
+            user.seen_welcome = True
+            r = self.invalid_response
+        else:
+            r = self.valid_response
+        print r
+        return r
+
+
 class IpCheckerFactory(_BaseFactory):
     """API for getting user ID of current proxy users."""
     def processLine(self, line):
@@ -94,6 +114,7 @@ class APIConstructor:
     validator = ValidatorFactory
     ip_checker = IpCheckerFactory
     ip_info = IpInfoFactory
+    session = SessionFactory
 
     @classmethod
     def construct(cls, factory_name, service):
