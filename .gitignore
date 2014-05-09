@@ -4,3 +4,4 @@ env
 twistd.log
 twistd.pid
 *.cache
+_trial_temp*

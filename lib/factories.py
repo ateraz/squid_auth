@@ -1,3 +1,4 @@
+# -*- test-case-name: tests.test_factories -*-
 """API factories and constructor definitions"""
 
 import datetime
@@ -41,7 +42,7 @@ class ValidatorFactory(_BaseFactory):
             log.msg('Bad auth string format')
             return self.invalid_response
         user = self.service.validateUser(auth_params)
-        status = 'valid' if user.is_authrorized else 'invalid'
+        status = 'valid' if user.is_authorized else 'invalid'
         return getattr(self, status + '_response')
 
     @staticmethod
@@ -60,7 +61,6 @@ class SessionFactory(_BaseFactory):
     invalid_response = 'ERR'
 
     def processLine(self, line):
-        print line
         ip, login = line.split()
         user = self.service.getActiveUserByIp(ip)
         if not user or login != user.login:
@@ -70,7 +70,6 @@ class SessionFactory(_BaseFactory):
             r = self.invalid_response
         else:
             r = self.valid_response
-        print r
         return r
 
 
@@ -85,10 +84,13 @@ class IpInfoFactory(_BaseFactory):
     allowed_fields = ['login', 'dept_id', 'admin_level']
 
     def processLine(self, line):
-        separator = line[0]
-        return str(self.buildResponseString(line.split(separator), separator))
+        return str(self.buildResponseString(line))
 
-    def buildResponseString(self, parts, separator):
+    def buildResponseString(self, line):
+        if not len(line):
+            return -1
+        separator = line[0]
+        parts = line.split(separator)
         if len(parts) < 3:
             return -1
         user = self.service.getActiveUserByIp(parts[1])

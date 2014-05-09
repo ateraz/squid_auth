@@ -1,19 +1,21 @@
+# Access parameters to database that stores all users.
 database:
     host: localhost
     name: squid_auth
     user: root
     passwd: root
 
+# Auth service parameters.
 service:
+    # Time intervals in seconds for base events.
     timeouts:
-        # in seconds
         login: 30
         show_welcome: 1800
         database_update: 600
+    # Console commands executed after new user auth.
+    # Possible placeholders for auth callbacks args:
+    #   ip, user_id, dept_id, login, passwd, admin_level, login_time
     callbacks:
-        # Console command executed after new user auth.
-        # Possible placeholders for auth callbacks args:
-        #   ip, user_id, dept_id, login, passwd, admin_level, login_time
         success:
             executable: /usr/bin/touch
             args: ['success{user_id}.txt']
@@ -21,6 +23,13 @@ service:
             executable: /usr/bin/touch
             args: ['fail.txt']
 
+# Parameters of TCP servers that are started in application.
+# Possible entries:
+#   validator (mandatory) - used by squid to check
+#       if user credentials are valid;
+#   session - used by squid to check if user seen welcome page;
+#   ip_checker - external API to detect if there's active users from IP;
+#   ip_info - external API to get user parameters by IP.
 servers:
     validator:
         port: 9999
