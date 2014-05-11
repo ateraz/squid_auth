@@ -61,16 +61,17 @@ class SessionFactory(_BaseFactory):
     invalid_response = 'ERR'
 
     def processLine(self, line):
-        ip, login = line.split()
+        try:
+            ip, login = line.split()
+        except ValueError:
+            return self.invalid_response
         user = self.service.getActiveUserByIp(ip)
         if not user or login != user.login:
-            r = self.invalid_response
+            return self.invalid_response
         elif not user.seen_welcome:
             user.seen_welcome = True
-            r = self.invalid_response
-        else:
-            r = self.valid_response
-        return r
+            return self.invalid_response
+        return self.valid_response
 
 
 class IpCheckerFactory(_BaseFactory):

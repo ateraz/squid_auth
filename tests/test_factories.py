@@ -50,7 +50,7 @@ class TestSessionFactory(_TestAPIFactory):
     factory_name = 'session'
 
     def test_wrong_format(self):
-        self.assertRaises(ValueError, self.processLine, '')
+        self.assertEqual(self.factory.invalid_response, self.processLine(''))
 
     def test_no_active_user(self):
         self.service.getActiveUserByIp.return_value = None
