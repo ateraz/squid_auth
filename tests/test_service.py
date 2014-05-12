@@ -25,6 +25,7 @@ class TestAuthService(unittest.TestCase):
                                             'fail': callback}
         self.service.config['timeouts'] = {'show_welcome': 1,
                                            'login' :1}
+        self.service.config['default_user'] = 'default_user'
         self.user = mock.Mock()
         self.service.db = mock.Mock()
         self.service.db.runQuery.return_value = (
@@ -84,28 +85,25 @@ class TestAuthService(unittest.TestCase):
             self.service.config['callbacks']['fail']['executable'],
             [])
 
+    def _is_valid(self):
+        return self.service.validateUser((self.ip, self.login, self.passwd))
+
     def test_validate_unknown_user(self):
-        user = self.service.validateUser((self.ip, self.login, self.passwd))
-        self.assertFalse(user.is_authorized)
+        self.assertFalse(self._is_valid())
 
     def test_validate_user_with_bad_passwd(self):
         self.service.all_users = {self.login: self.user}
-        user = self.service.validateUser((self.ip, self.login, self.passwd))
-        self.assertFalse(user.is_authorized)
+        self.assertFalse(self._is_valid())
 
     def test_validate_new_user(self):
         self.user.passwd = self.passwd
         self.service.all_users = {self.login: self.user}
-        user = self.service.validateUser((self.ip, self.login, self.passwd))
-        self.assertTrue(user.is_authorized)
-        self.assertEqual(user, self.user)
-        self.assertEqual(user, self.service.active_users[self.ip])
+        self.assertTrue(self._is_valid())
 
     def test_validate_user_from_used_ip(self):
         self.service.all_users = {self.login: self.user}
         self.service.active_users = {self.ip: mock.Mock()}
-        user = self.service.validateUser((self.ip, self.login, self.passwd))
-        self.assertFalse(user.is_authorized)
+        self.assertFalse(self._is_valid())
 
     def test_active_users_timeout(self):
         self.user.last_active = datetime.datetime.now()

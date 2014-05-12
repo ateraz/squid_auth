@@ -23,12 +23,13 @@ class _TestAPIFactory(unittest.TestCase):
 
 class TestValidationFactory(_TestAPIFactory):
     factory_name = 'validator'
+    encoded_query = 'ip type dXNlcjpwYXNz'
 
     def test_parse_auth(self):
         parse = self.factory.parseAuthString
         self.assertEqual(None, parse(''))
         self.assertEqual(None, parse('invalid string'))
-        ip, login, passwd = parse('ip type dXNlcjpwYXNz')
+        ip, login, passwd = parse(self.encoded_query)
         self.assertEqual('ip', ip)
         self.assertEqual('user', login)
         self.assertEqual('pass', passwd)
@@ -37,27 +38,20 @@ class TestValidationFactory(_TestAPIFactory):
         self.assertEqual(self.processLine(''), self.factory.invalid_response)
 
     def test_valid_line(self):
-        self.assertEqual(self.processLine('ip type dXNlcjpwYXNz'),
+        self.assertEqual(self.processLine(self.encoded_query),
                          self.factory.valid_response)
 
     def test_not_authorized_user(self):
         self.service.validateUser.return_value.is_authorized = False
-        self.assertEqual(self.processLine('ip type dXNlcjpwYXNz'),
+        self.assertEqual(self.processLine(self.encoded_query),
                          self.factory.invalid_response)
 
 
 class TestSessionFactory(_TestAPIFactory):
     factory_name = 'session'
 
-    def test_wrong_format(self):
-        self.assertEqual(self.factory.invalid_response, self.processLine(''))
-
     def test_no_active_user(self):
         self.service.getActiveUserByIp.return_value = None
-        self.assertEqual(self.factory.invalid_response,
-                         self.processLine('a b'))
-
-    def test_wrong_login(self):
         self.assertEqual(self.factory.invalid_response,
                          self.processLine('a b'))
 

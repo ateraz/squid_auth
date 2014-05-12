@@ -7,10 +7,12 @@ database:
 
 # Auth service parameters.
 service:
+    # Username that passes validation without credentials
+    default_user: default_user
     # Time intervals in seconds for base events.
     timeouts:
         login: 30
-        show_welcome: 1800
+        show_welcome: 600
         database_update: 600
     # Console commands executed after new user auth.
     # Possible placeholders for auth callbacks args:

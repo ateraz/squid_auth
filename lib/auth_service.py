@@ -32,7 +32,6 @@ class AuthService(service.Service):
     def addActiveUser(self, user, ip):
         user.connectFrom(ip)
         self.active_users[ip] = user
-        return user
 
     def ipUsedByAnotherUser(self, ip, login):
         return ip in self.active_users and self.active_users[ip].login != login
@@ -45,17 +44,24 @@ class AuthService(service.Service):
 
     def validateUser(self, auth_params):
         ip, login, passwd = auth_params
-        if login not in self.all_users or \
-                self.all_users[login].passwd != passwd or \
-                self.ipUsedByAnotherUser(ip, login):
+        is_default_user = login == self.config['default_user']
+        wrong_credentials = not is_default_user and (
+            login not in self.all_users or
+            self.all_users[login].passwd != passwd)
+        if wrong_credentials or self.ipUsedByAnotherUser(ip, login):
             user = User(ip=ip, login=login, passwd=passwd)
         elif ip in self.active_users:
             user = self.active_users[ip]
             user.updateLastActivity()
         else:
-            user = self.addActiveUser(self.all_users[login], ip)
+            if is_default_user:
+                user = User(ip=ip, login=login, passwd=passwd, user_id=0,
+                            dept_id=0, admin_level=0)
+            else:
+                user = self.all_users[login]
+            self.addActiveUser(user, ip)
             self.executeCallback(user)
-        return user
+        return user.is_authorized
 
     def checkActiveUsersTimeout(self):
         deadline = datetime.datetime.now() - datetime.timedelta(
@@ -68,7 +74,9 @@ class AuthService(service.Service):
     def checkSeenWelcomeTimeout(self):
         deadline = datetime.datetime.now() - datetime.timedelta(
             seconds=self.config['timeouts']['show_welcome'])
-        for ip, user in self.active_users.items():
+        # Note that users with login self.config['default_user'] exist only in
+        # active_users thus should be also checked for seen_welcome timeout
+        for key, user in self.active_users.items() + self.all_users.items():
             if user.last_active < deadline:
                 user.seen_welcome = False
 
@@ -76,8 +84,7 @@ class AuthService(service.Service):
     def getAllUsers(self):
         users = yield self.db.runQuery(
             'SELECT login, passwd, user_id, dept_id, admin_level '
-            'FROM users_all'
-        )
+            'FROM users_all')
         for user in users:
             login, passwd, user_id, dept_id, admin_level = user[0], user[1], \
                 user[2], user[3], user[4]

@@ -41,9 +41,9 @@ class ValidatorFactory(_BaseFactory):
         if not auth_params:
             log.msg('Bad auth string format')
             return self.invalid_response
-        user = self.service.validateUser(auth_params)
-        status = 'valid' if user.is_authorized else 'invalid'
-        return getattr(self, status + '_response')
+        if self.service.validateUser(auth_params):
+            return self.valid_response
+        return self.invalid_response
 
     @staticmethod
     def parseAuthString(auth_str):
@@ -61,12 +61,8 @@ class SessionFactory(_BaseFactory):
     invalid_response = 'ERR'
 
     def processLine(self, line):
-        try:
-            ip, login = line.split()
-        except ValueError:
-            return self.invalid_response
-        user = self.service.getActiveUserByIp(ip)
-        if not user or login != user.login:
+        user = self.service.getActiveUserByIp(line)
+        if not user:
             return self.invalid_response
         elif not user.seen_welcome:
             user.seen_welcome = True
