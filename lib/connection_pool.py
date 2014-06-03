@@ -26,6 +26,7 @@ class ConnectionPool(adbapi.ConnectionPool):
             return self._pool._runInteraction(
                 self, interaction, *args, **kw)
         except MySQLdb.OperationalError as e:
+            # Reraise error only if have not handler to process it
             if self.error_handler:
                 return self.error_handler(e)
             raise e

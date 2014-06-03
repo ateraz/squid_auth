@@ -9,30 +9,31 @@ from twisted.python import log
 
 
 class _BaseProtocol(LineReceiver):
-    """Base protocol for implementing socket APIs."""
+    """Base protocol for implementing socket APIs"""
     delimiter = b'\n'
 
     def lineReceived(self, line):
+        """Method called when received new line from client"""
         self.sendLine(self.factory.processLine(line.strip()))
 
 
 class _BaseFactory(protocol.ServerFactory):
     """Factory instantiating base protocol instances
-    and implementing API logic."""
+    and implementing API logic"""
     protocol = _BaseProtocol
 
     def __init__(self, service):
         self.service = service
 
     def processLine(self, line):
-        """Abstract method that should be implemented in child classes.
-        Contains logic for building response for API calls."""
+        """Abstract method that should be implemented in child classes
+        and contain logic for building response for API calls"""
         raise NotImplementedError(
             'Method lineReceived should be implemented in subclass')
 
 
 class ValidatorFactory(_BaseFactory):
-    """API used by squid for validating proxy users."""
+    """API used by squid for validating proxy users"""
     valid_response = 'OK'
     invalid_response = 'ERR'
 
@@ -47,6 +48,7 @@ class ValidatorFactory(_BaseFactory):
 
     @staticmethod
     def parseAuthString(auth_str):
+        """Method to extract user access params from response string"""
         parts = auth_str.replace('%20', ' ').split()
         try:
             credentials = base64.b64decode(parts[2]).split(':')
@@ -56,7 +58,7 @@ class ValidatorFactory(_BaseFactory):
 
 
 class SessionFactory(_BaseFactory):
-    """"""
+    """Optional API for checking if user already seen welcome page"""
     valid_response = 'OK'
     invalid_response = 'ERR'
 
@@ -71,19 +73,20 @@ class SessionFactory(_BaseFactory):
 
 
 class IpCheckerFactory(_BaseFactory):
-    """API for getting user ID of current proxy users."""
+    """API for getting user ID of current proxy users"""
     def processLine(self, line):
         return str(self.service.getActiveUserIdByIp(line))
 
 
 class IpInfoFactory(_BaseFactory):
-    """API for getting more detailed info about active proxy users."""
+    """API for getting more detailed info about active proxy users"""
     allowed_fields = ['login', 'dept_id', 'admin_level']
 
     def processLine(self, line):
         return str(self.buildResponseString(line))
 
     def buildResponseString(self, line):
+        """Constructs response string depending on response format"""
         if not len(line):
             return -1
         separator = line[0]
@@ -96,6 +99,7 @@ class IpInfoFactory(_BaseFactory):
         return self.getUserParams(user, parts[2:], separator)
 
     def getUserParams(self, user, params, separator):
+        """Returning user params for proper request, -1 otherwise"""
         user_params = []
         for param in params:
             if param in self.allowed_fields:
@@ -107,9 +111,8 @@ class IpInfoFactory(_BaseFactory):
 
 
 class APIConstructor:
-    """API builder.
-    Class implementing factory design pattern
-    that instantiates API instances for application."""
+    """API builder class implementing factory design pattern
+    that instantiates API instances for application"""
     validator = ValidatorFactory
     ip_checker = IpCheckerFactory
     ip_info = IpInfoFactory

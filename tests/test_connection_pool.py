@@ -4,8 +4,8 @@ from lib import ConnectionPool
 
 class TestConnectionPool(unittest.TestCase):
     def setUp(self):
-        self.pool = ConnectionPool({'host': '', 'name': '', 'user': '',
-                                    'passwd': ''})
+        self.pool = ConnectionPool({
+            'host': '', 'name': '', 'user': '', 'passwd': ''})
 
     def test_with_error_handler(self):
         error = 'error'

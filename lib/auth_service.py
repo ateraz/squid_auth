@@ -10,8 +10,11 @@ from user import User
 
 class AuthService(service.Service):
     """Service used by APIs to query, store and exchange info about users."""
+    # IP: user hash for storing active users
     active_users = {}
+    # (login, pass): user hash for caching all users
     all_users = {}
+    # String formatter used in system callbacks formatting
     formatter = string.Formatter()
     callback_handler = utils
 
@@ -22,6 +25,7 @@ class AuthService(service.Service):
 
     def startService(self):
         service.Service.startService(self)
+        # Setting up tasks for periodic users update
         task.LoopingCall(self.getAllUsers).start(
             self.config['timeouts']['database_update'])
         task.LoopingCall(self.checkActiveUsersTimeout).start(
@@ -30,10 +34,12 @@ class AuthService(service.Service):
             self.config['timeouts']['show_welcome'])
 
     def addActiveUser(self, user, ip):
+        """Method for updating setting user ip and updating active users list"""
         user.connectFrom(ip)
         self.active_users[ip] = user
 
     def ipUsedByAnotherUser(self, ip, login):
+        """Check if IP is already used"""
         return ip in self.active_users and self.active_users[ip].login != login
 
     def getActiveUserByIp(self, ip):
@@ -43,17 +49,21 @@ class AuthService(service.Service):
         return getattr(self.getActiveUserByIp(ip), 'user_id', 0)
 
     def validateUser(self, auth_params):
+        """Method used by validation API for checking"""
         ip, login, passwd = auth_params
         is_default_user = login == self.config['default_user']
         wrong_credentials = not is_default_user and (
             login not in self.all_users or
             self.all_users[login].passwd != passwd)
         if wrong_credentials or self.ipUsedByAnotherUser(ip, login):
+            # Invalid credentials or IP already in use
             user = User(ip=ip, login=login, passwd=passwd)
         elif ip in self.active_users:
+            # User alreaady in active list
             user = self.active_users[ip]
             user.updateLastActivity()
         else:
+            # User just connected
             if is_default_user:
                 user = User(ip=ip, login=login, passwd=passwd, user_id=0,
                             dept_id=0, admin_level=0)
@@ -64,6 +74,7 @@ class AuthService(service.Service):
         return user.is_authorized
 
     def checkActiveUsersTimeout(self):
+        """Task for updating active users list"""
         deadline = datetime.datetime.now() - datetime.timedelta(
             seconds=self.config['timeouts']['login'])
         for ip, user in self.active_users.items():
@@ -72,6 +83,7 @@ class AuthService(service.Service):
                 del self.active_users[ip]
 
     def checkSeenWelcomeTimeout(self):
+        """Task for updating users who have seen welcome page"""
         deadline = datetime.datetime.now() - datetime.timedelta(
             seconds=self.config['timeouts']['show_welcome'])
         # Note that users with login self.config['default_user'] exist only in
@@ -82,6 +94,7 @@ class AuthService(service.Service):
 
     @defer.inlineCallbacks
     def getAllUsers(self):
+        """Task for updating all users list"""
         users = yield self.db.runQuery(
             'SELECT login, passwd, user_id, dept_id, admin_level '
             'FROM users_all')
@@ -89,15 +102,18 @@ class AuthService(service.Service):
             login, passwd, user_id, dept_id, admin_level = user[0], user[1], \
                 user[2], user[3], user[4]
             if login not in self.all_users:
+                # Create new user
                 self.all_users[login] = User(
                     login=login, passwd=passwd, user_id=user_id,
                     dept_id=dept_id, admin_level=admin_level)
             else:
+                # Update already existing user
                 self.all_users[login].update(
                     passwd=passwd, user_id=user_id, dept_id=dept_id,
                     admin_level=admin_level)
 
     def executeCallback(self, user):
+        """Method for executing system callbacks"""
         status = 'success' if user.is_authorized else 'fail'
         callback = self.config['callbacks'][status]
         executable = callback['executable']
@@ -108,9 +124,11 @@ class AuthService(service.Service):
             self.callback_handler.getProcessValue(executable, args)
 
     def formatArgs(self, args, mapping):
+        """System callbacks args formatting"""
         return [self.formatter.vformat(arg, None, mapping) for arg in args]
 
     def processDbError(self, error):
+        """Custom DB error processing"""
         if self.all_users:
             log.msg("Users not updated from db!")
         else:

@@ -27,12 +27,15 @@ class User(object):
         self.is_authorized = True
 
     def _updateField(self, field, value):
+        """Helper method for updating user objects,
+        return True if field was updated, False otherwise"""
         if getattr(self, field, '') != value:
             setattr(self, field, value)
             return True
         return False
 
     def update(self, **fields):
+        """Nethod that updates user fields by its arguments"""
         updated = False
         for field in fields:
             updated += self._updateField(field, fields[field])
@@ -40,6 +43,7 @@ class User(object):
             self.updated = datetime.datetime.now()
 
     def updateLastActivity(self):
+        """Method for setting time of last user request"""
         self.last_active = datetime.datetime.now()
 
     # Used in callback command string formatting
