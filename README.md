@@ -3,6 +3,16 @@ squid_auth
 
 Service for IP based squid auth and session checking.
 
+How to install:
+1. Copy repo (`git clone` or manually).
+2. Install python.
+3. Install pip.
+4. `pip install -r requirements.txt`
+5. Install squid 3.2+
+6. Add squid config from this file.
+7. `twistd squid_auth`
+8. Profit.
+
 Squid 3.2+ config:
 ```
 # Custom authenticator that always returns "OK" and links to the external acl
